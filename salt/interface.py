@@ -58,6 +58,19 @@ class CustomGraphicsView(QGraphicsView):
         else:
             self.image_item = self.scene.addPixmap(pixmap)
             self.setSceneRect(QRectF(pixmap.rect()))
+        # Image scaling: always fill the view, up or down, keeping aspect ratio
+        view_size = self.viewport().size()
+        img_size = pixmap.size()
+        if img_size.width() > 0 and img_size.height() > 0:
+            scale_x = view_size.width() / img_size.width()
+            scale_y = view_size.height() / img_size.height()
+            scale = min(scale_x, scale_y)
+            self.resetTransform()
+            self.scale(scale, scale)
+        else:
+            self.resetTransform()
+        # Optionally, center the image
+        self.centerOn(self.sceneRect().center())
 
     def wheelEvent(self, event: QWheelEvent):
         modifiers = QApplication.keyboardModifiers()
@@ -71,6 +84,15 @@ class CustomGraphicsView(QGraphicsView):
             self.horizontalScrollBar().setValue(x - delta_x)
             y = self.verticalScrollBar().value()
             self.verticalScrollBar().setValue(y - delta_y)
+
+    def keyPressEvent(self, event):
+        adj = 0.1
+        # Zoom in/out with Ctrl++ and Ctrl+- (applies only if this is the image view widget)
+        if event.modifiers() == Qt.ControlModifier:
+            if event.key() == Qt.Key_Plus or event.key() == Qt.Key_Equal:
+                self.scale(1 + adj, 1 + adj)
+            elif event.key() == Qt.Key_Minus:
+                self.scale(1 - adj, 1 - adj)
 
     def imshow(self, img):
         height, width, channel = img.shape
@@ -287,4 +309,4 @@ class ApplicationInterface(QWidget):
             # Do something if the space bar is pressed
             # pass
 
-    
+
