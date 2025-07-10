@@ -26,10 +26,12 @@ selected_annotations = []
 
 
 class CustomGraphicsView(QGraphicsView):
-    def __init__(self, editor):
+    def __init__(self, editor, tracking_mode=False):
         super(CustomGraphicsView, self).__init__()
 
         self.editor = editor
+        self.tracking_mode = tracking_mode
+
         self.setRenderHint(QPainter.Antialiasing)
         self.setRenderHint(QPainter.SmoothPixmapTransform)
         self.setRenderHint(QPainter.TextAntialiasing)
@@ -97,12 +99,13 @@ class CustomGraphicsView(QGraphicsView):
     def imshow(self, img):
         height, width, channel = img.shape
         bytes_per_line = 3 * width
-        q_img = QImage(
-            img.data, width, height, bytes_per_line, QImage.Format_RGB888
-        ).rgbSwapped()
+        q_img = QImage(img.data, width, height, bytes_per_line, QImage.Format_RGB888).rgbSwapped()
         self.set_image(q_img)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
+        if self.tracking_mode:
+            return
+
         # FUTURE USE OF RIGHT CLICK EVENT IN THIS AREA
         modifiers = QApplication.keyboardModifiers()
         if modifiers == Qt.ControlModifier:
@@ -121,11 +124,12 @@ class CustomGraphicsView(QGraphicsView):
 
 
 class ApplicationInterface(QWidget):
-    def __init__(self, app, editor, panel_size=(1920, 1080)):
+    def __init__(self, app, editor, tracking_mode=False, panel_size=(1920, 1080)):
         super(ApplicationInterface, self).__init__()
         self.app = app
         self.editor = editor
         self.panel_size = panel_size
+        self.tracking_mode = tracking_mode
 
         self.layout = QVBoxLayout()
 
@@ -133,9 +137,16 @@ class ApplicationInterface(QWidget):
         self.layout.addWidget(self.top_bar)
 
         self.main_window = QHBoxLayout()
-
-        self.graphics_view = CustomGraphicsView(editor)
-        self.main_window.addWidget(self.graphics_view)
+        if not tracking_mode:
+            self.graphics_view = CustomGraphicsView(editor)
+            self.main_window.addWidget(self.graphics_view)
+        else:
+            self.images_column = QVBoxLayout()
+            self.graphics_view = CustomGraphicsView(editor)
+            self.images_column.addWidget(self.graphics_view)
+            self.next_graphics_view = CustomGraphicsView(editor, tracking_mode=True)
+            self.images_column.addWidget(self.next_graphics_view)
+            self.main_window.addLayout(self.images_column)
 
         self.panel = self.get_side_panel()
         self.panel_annotations = QListWidget()
@@ -150,49 +161,51 @@ class ApplicationInterface(QWidget):
 
         self.setLayout(self.layout)
 
+        self.update_view()
+
+    def update_view(self):
         self.graphics_view.imshow(self.editor.display)
+        self.get_side_panel_annotations()
+
+        if self.tracking_mode:
+            self.next_graphics_view.imshow(self.editor.draw_next_image_with_annotations())
 
     def reset(self):
         global selected_annotations
         self.editor.reset(selected_annotations)
-        self.graphics_view.imshow(self.editor.display)
-        self.get_side_panel_annotations()
+        self.update_view()
 
     def add(self):
         global selected_annotations
         self.editor.save_ann()
         self.editor.reset(selected_annotations)
-        self.graphics_view.imshow(self.editor.display)
-        self.get_side_panel_annotations()
+        self.update_view()
 
     def next_image(self):
         global selected_annotations
         self.editor.next_image()
         selected_annotations = []
-        self.graphics_view.imshow(self.editor.display)
-        self.get_side_panel_annotations()
+        self.update_view()
 
     def prev_image(self):
         global selected_annotations
         self.editor.prev_image()
         selected_annotations = []
-        self.graphics_view.imshow(self.editor.display)
-        self.get_side_panel_annotations()
+        self.update_view()
 
     def toggle(self):
         global selected_annotations
         self.editor.toggle(selected_annotations)
-        self.graphics_view.imshow(self.editor.display)
-        self.get_side_panel_annotations()
+        self.update_view()
 
     def transparency_up(self):
         global selected_annotations
         self.editor.step_up_transparency(selected_annotations)
-        self.graphics_view.imshow(self.editor.display)
+        self.update_view()
 
     def transparency_down(self):
         self.editor.step_down_transparency(selected_annotations)
-        self.graphics_view.imshow(self.editor.display)
+        self.update_view()
 
     def save_all(self):
         self.editor.save()
@@ -201,13 +214,13 @@ class ApplicationInterface(QWidget):
         global selected_annotations
         self.editor.change_category(selected_annotations)
         self.editor.reset(selected_annotations)
-        self.graphics_view.imshow(self.editor.display)
-        self.get_side_panel_annotations()
+        self.update_view()
 
     def get_top_bar(self):
         top_bar = QWidget()
         button_layout = QHBoxLayout(top_bar)
-        self.layout.addLayout(button_layout)
+        # suppress warning "QLayout::addChildLayout: layout "" already has a parent"
+        # self.layout.addLayout(button_layout)
         buttons = [
             ("Add", lambda: self.add()),
             ("Reset", lambda: self.reset()),
@@ -237,12 +250,8 @@ class ApplicationInterface(QWidget):
         label_array = []
         for i, _ in enumerate(categories):
             label_array.append(QRadioButton(categories[i]))
-            label_array[i].clicked.connect(
-                lambda state, x=categories[i]: self.editor.select_category(x)
-            )
-            label_array[i].setStyleSheet(
-                "background-color: rgba({},{},{},0.6)".format(*colors[i][::-1])
-            )
+            label_array[i].clicked.connect(lambda state, x=categories[i]: self.editor.select_category(x))
+            label_array[i].setStyleSheet("background-color: rgba({},{},{},0.6)".format(*colors[i][::-1]))
             panel_layout.addWidget(label_array[i])
 
         scroll = QScrollArea()
@@ -258,9 +267,7 @@ class ApplicationInterface(QWidget):
         # anns, colors = self.editor.get_annotations(self.editor.image_id)
         categories = self.editor.get_categories(get_colors=False)
         for i, ann in enumerate(anns):
-            listWidgetItem = QListWidgetItem(
-                str(ann["id"]) + " - " + (categories[ann["category_id"]])
-            )
+            listWidgetItem = QListWidgetItem(str(ann["id"]) + " - " + (categories[ann["category_id"]]))
             list_widget.addItem(listWidgetItem)
         return list_widget
 
@@ -308,5 +315,3 @@ class ApplicationInterface(QWidget):
             # self.clear_annotations(selected_annotations)
             # Do something if the space bar is pressed
             # pass
-
-
