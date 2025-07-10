@@ -85,6 +85,15 @@ class CustomGraphicsView(QGraphicsView):
             y = self.verticalScrollBar().value()
             self.verticalScrollBar().setValue(y - delta_y)
 
+    def keyPressEvent(self, event):
+        adj = 0.1
+        # Zoom in/out with Ctrl++ and Ctrl+- (applies only if this is the image view widget)
+        if event.modifiers() == Qt.ControlModifier:
+            if event.key() == Qt.Key_Plus or event.key() == Qt.Key_Equal:
+                self.scale(1 + adj, 1 + adj)
+            elif event.key() == Qt.Key_Minus:
+                self.scale(1 - adj, 1 - adj)
+
     def imshow(self, img):
         height, width, channel = img.shape
         bytes_per_line = 3 * width
