@@ -58,6 +58,19 @@ class CustomGraphicsView(QGraphicsView):
         else:
             self.image_item = self.scene.addPixmap(pixmap)
             self.setSceneRect(QRectF(pixmap.rect()))
+        # Image scaling: always fill the view, up or down, keeping aspect ratio
+        view_size = self.viewport().size()
+        img_size = pixmap.size()
+        if img_size.width() > 0 and img_size.height() > 0:
+            scale_x = view_size.width() / img_size.width()
+            scale_y = view_size.height() / img_size.height()
+            scale = min(scale_x, scale_y)
+            self.resetTransform()
+            self.scale(scale, scale)
+        else:
+            self.resetTransform()
+        # Optionally, center the image
+        self.centerOn(self.sceneRect().center())
 
     def wheelEvent(self, event: QWheelEvent):
         modifiers = QApplication.keyboardModifiers()
@@ -287,4 +300,4 @@ class ApplicationInterface(QWidget):
             # Do something if the space bar is pressed
             # pass
 
-    
+
