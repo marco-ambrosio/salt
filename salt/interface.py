@@ -137,25 +137,47 @@ class ApplicationInterface(QWidget):
         self.layout.addWidget(self.top_bar)
 
         self.main_window = QHBoxLayout()
-        if not tracking_mode:
-            self.graphics_view = CustomGraphicsView(editor)
-            self.main_window.addWidget(self.graphics_view)
-        else:
-            self.images_column = QVBoxLayout()
-            self.graphics_view = CustomGraphicsView(editor)
-            self.images_column.addWidget(self.graphics_view)
-            self.next_graphics_view = CustomGraphicsView(editor, tracking_mode=True)
-            self.images_column.addWidget(self.next_graphics_view)
-            self.main_window.addLayout(self.images_column)
 
-        self.panel = self.get_side_panel()
+        self.vertical_layout = QVBoxLayout()
+        label = QLabel("Current Image (edit mode)")
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("font-weight: bold")
+        self.vertical_layout.addWidget(label)
+        self.graphics_view = CustomGraphicsView(editor)
+        self.vertical_layout.addWidget(self.graphics_view)
+        self.main_window.addLayout(self.vertical_layout)
+
+        if tracking_mode:
+            label = QLabel("Previous Image")
+            label.setAlignment(Qt.AlignCenter)
+            label.setStyleSheet("font-weight: bold")
+            self.vertical_layout.addWidget(label)
+            self.prev_graphics_view = CustomGraphicsView(editor, tracking_mode=True)
+            self.vertical_layout.addWidget(self.prev_graphics_view)
+
+        # ANNOTATIONS PANEL
+        self.annotations_layout = QVBoxLayout()
+        label = QLabel("Annotations")
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("font-weight: bold")
+        self.annotations_layout.addWidget(label)
         self.panel_annotations = QListWidget()
         self.panel_annotations.setFixedWidth(200)
         self.panel_annotations.setSelectionMode(QAbstractItemView.MultiSelection)
         self.panel_annotations.itemClicked.connect(self.annotation_list_item_clicked)
+        self.annotations_layout.addWidget(self.panel_annotations)
         self.get_side_panel_annotations()
-        self.main_window.addWidget(self.panel)
-        self.main_window.addWidget(self.panel_annotations)
+        self.main_window.addLayout(self.annotations_layout)
+
+        # CATEGORIES PANEL
+        self.panel = self.get_side_panel()
+        self.categories_layout = QVBoxLayout()
+        label = QLabel("Categories")
+        label.setAlignment(Qt.AlignCenter)
+        label.setStyleSheet("font-weight: bold")
+        self.categories_layout.addWidget(label)
+        self.categories_layout.addWidget(self.panel)
+        self.main_window.addLayout(self.categories_layout)
 
         self.layout.addLayout(self.main_window)
 
@@ -168,7 +190,7 @@ class ApplicationInterface(QWidget):
         self.get_side_panel_annotations()
 
         if self.tracking_mode:
-            self.next_graphics_view.imshow(self.editor.draw_next_image_with_annotations())
+            self.prev_graphics_view.imshow(self.editor.draw_prev_image_with_annotations())
 
     def reset(self):
         global selected_annotations
@@ -222,29 +244,31 @@ class ApplicationInterface(QWidget):
         # suppress warning "QLayout::addChildLayout: layout "" already has a parent"
         # self.layout.addLayout(button_layout)
         buttons = [
-            ("Add", lambda: self.add()),
-            ("Reset", lambda: self.reset()),
-            ("Prev", lambda: self.prev_image()),
-            ("Next", lambda: self.next_image()),
-            ("Toggle", lambda: self.toggle()),
-            ("Transparency Up", lambda: self.transparency_up()),
-            ("Transparency Down", lambda: self.transparency_down()),
-            ("Save", lambda: self.save_all()),
+            ("Add", lambda: self.add(), "Add annotations to the current image (N)"),
+            ("Reset", lambda: self.reset(), "Reset the current annotations (R)"),
+            ("Prev", lambda: self.prev_image(), "Go to the previous image (A)"),
+            ("Next", lambda: self.next_image(), "Go to the next image (D)"),
+            ("Toggle", lambda: self.toggle(), "Toggle visibility of annotations (T)"),
+            ("Transparency Up", lambda: self.transparency_up(), "Increase transparency (L)"),
+            ("Transparency Down", lambda: self.transparency_down(), "Decrease transparency (K)"),
+            ("Save", lambda: self.save_all(), "Save all annotations to file (Ctrl+S)"),
             (
                 "Remove Selected Annotations",
-                lambda: self.delete_annotations(),
+                lambda: self.delete_annotations(), "Remove selected annotations"
             ),
-            ("Change Category", lambda: self.change_category()),
+            ("Change Category", lambda: self.change_category(), "Change category of selected annotations (C)"),
         ]
-        for button, lmb in buttons:
+        for button, lmb, help in buttons:
             bt = QPushButton(button)
             bt.clicked.connect(lmb)
+            bt.setToolTip(help)
             button_layout.addWidget(bt)
 
         return top_bar
 
     def get_side_panel(self):
         panel = QWidget()
+        
         panel_layout = QVBoxLayout(panel)
         categories, colors = self.editor.get_categories(get_colors=True)
         label_array = []

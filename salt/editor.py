@@ -102,6 +102,24 @@ class Editor:
         anns, colors = self.dataset_explorer.get_annotations(image_id, return_colors=True)
         display = self.du.draw_annotations(display, anns, colors)
         return display
+    
+
+    def draw_prev_image_with_annotations(self):
+        """
+        Returns the prev image with annotations drawn on it.
+        If the current image is the first one, it returns a blank image.
+        """
+
+        if self.image_id == 0:
+            display = np.zeros_like(self.image_bgr)
+            return display
+
+        image_id = self.image_id - 1
+        (image, image_bgr, image_embedding) = self.dataset_explorer.get_image_data(image_id)
+        display = image_bgr.copy()
+        anns, colors = self.dataset_explorer.get_annotations(image_id, return_colors=True)
+        display = self.du.draw_annotations(display, anns, colors)
+        return display
 
     def add_click(self, new_pt, new_label, selected_annotations=[]):
         self.curr_inputs.add_input_click(new_pt, new_label)
