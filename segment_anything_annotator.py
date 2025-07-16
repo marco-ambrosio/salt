@@ -34,4 +34,4 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = ApplicationInterface(app, editor, tracking_mode=args.tracking)
     window.show()
-    sys.exit(app.exec_())
+    app.exec()

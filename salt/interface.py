@@ -1,27 +1,26 @@
 import cv2
 from PyQt5.QtWidgets import (
-    QScrollArea,
-    QWidget,
-    QVBoxLayout,
-    QLabel,
-    QGraphicsView,
-    QGraphicsScene,
+    QAbstractItemView,
+    QAction,
     QApplication,
+    QGraphicsScene,
+    QGraphicsView,
+    QHBoxLayout,
+    QInputDialog,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QAbstractItemView,
+    QMainWindow,
+    QMessageBox,
+    QPushButton,
+    QRadioButton,
+    QScrollArea,
+    QStatusBar,
+    QVBoxLayout,
+    QWidget,
 )
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QWheelEvent, QMouseEvent
 from PyQt5.QtCore import Qt, QRectF
-from PyQt5.QtWidgets import (
-    QPushButton,
-    QVBoxLayout,
-    QHBoxLayout,
-    QWidget,
-    QLabel,
-    QRadioButton,
-    QInputDialog
-)
 
 selected_annotations = []
 
@@ -90,13 +89,13 @@ class CustomGraphicsView(QGraphicsView):
 
     def keyPressEvent(self, event):
         adj = 0.1
+
         # Zoom in/out with Ctrl++ and Ctrl+- (applies only if this is the image view widget)
         if event.modifiers() == Qt.ControlModifier:
             if event.key() == Qt.Key_Plus or event.key() == Qt.Key_Equal:
                 self.scale(1 + adj, 1 + adj)
-            elif event.key() == Qt.Key_Minus:
+            if event.key() == Qt.Key_Minus:
                 self.scale(1 - adj, 1 - adj)
-                
         super().keyPressEvent(event)
 
     def imshow(self, img):
@@ -126,13 +125,39 @@ class CustomGraphicsView(QGraphicsView):
         self.imshow(self.editor.display)
 
 
-class ApplicationInterface(QWidget):
+class ApplicationInterface(QMainWindow):
     def __init__(self, app, editor, tracking_mode=False, panel_size=(1920, 1080)):
-        super(ApplicationInterface, self).__init__()
+        super().__init__()
         self.app = app
         self.editor = editor
         self.panel_size = panel_size
         self.tracking_mode = tracking_mode
+
+        self.setStatusBar(QStatusBar(self))
+
+        file_menu = self.menuBar().addMenu("&File")
+        save_action = QAction("&Save", self)
+        save_action.setStatusTip("Save the current annotation (Ctrl+S)")
+        save_action.triggered.connect(self.save_all)
+        file_menu.addAction(save_action)
+        exit_action = QAction("&Exit", self)
+        exit_action.setStatusTip("Exit the application")
+        exit_action.triggered.connect(self.quit)
+        file_menu.addAction(exit_action)
+
+        view_menu = self.menuBar().addMenu("&View")
+        toggle_action = QAction("&Toggle Annotations", self)
+        toggle_action.setStatusTip("Toggle annotation visibility (T)")
+        toggle_action.triggered.connect(self.toggle)
+        view_menu.addAction(toggle_action)
+        transparency_up_action = QAction("Transparency Up", self)
+        transparency_up_action.setStatusTip("Increase transparency (L)")
+        transparency_up_action.triggered.connect(self.transparency_up)
+        view_menu.addAction(transparency_up_action)
+        transparency_down_action = QAction("Transparency Down", self)
+        transparency_down_action.setStatusTip("Decrease transparency (K)")
+        transparency_down_action.triggered.connect(self.transparency_down)
+        view_menu.addAction(transparency_down_action)
 
         self.layout = QVBoxLayout()
 
@@ -162,7 +187,9 @@ class ApplicationInterface(QWidget):
 
         self.layout.addLayout(self.main_window)
 
-        self.setLayout(self.layout)
+        widget = QWidget()
+        widget.setLayout(self.layout)
+        self.setCentralWidget(widget)
 
         self.update_view()
 
@@ -173,9 +200,58 @@ class ApplicationInterface(QWidget):
         if self.tracking_mode:
             self.next_graphics_view.imshow(self.editor.draw_next_image_with_annotations())
 
+    def closeEvent(self, event):
+        self.quit(event)
+
+    def quit(self, event=None):
+        reply = QMessageBox.question(
+            self,
+            "Quit",
+            "Do you want to save your changes before quitting?",
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if reply == QMessageBox.Yes:
+            self.save_all()
+            if event is not None:
+                event.accept()
+        elif reply == QMessageBox.Cancel:
+            if event is not None:
+                event.ignore()
+            return
+
+        if event is not None:
+            event.accept()
+        self.app.quit()
+
+    def closeEvent(self, event):
+        self.quit(event)
+
+    def quit(self, event=None):
+        reply = QMessageBox.question(
+            self,
+            "Quit",
+            "Do you want to save your changes before quitting?",
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+            QMessageBox.Cancel,
+        )
+        if reply == QMessageBox.Yes:
+            self.save_all()
+            if event is not None:
+                event.accept()
+        elif reply == QMessageBox.Cancel:
+            if event is not None:
+                event.ignore()
+            return
+
+        if event is not None:
+            event.accept()
+        self.app.quit()
+
     def reset(self):
         global selected_annotations
         self.editor.reset(selected_annotations)
+        selected_annotations = []
         self.update_view()
 
     def add(self):
@@ -183,6 +259,7 @@ class ApplicationInterface(QWidget):
         self.editor.save_ann()
         self.editor.reset(selected_annotations)
         self.update_view()
+        self.statusBar().showMessage("Annotation added successfully!", 5000)
 
     def next_image(self):
         global selected_annotations
@@ -229,12 +306,47 @@ class ApplicationInterface(QWidget):
 
     def save_all(self):
         self.editor.save()
+        self.statusBar().showMessage("Annotations saved successfully!", 5000)
 
-    def change_category(self):
+    def change_annotation_category(self):
         global selected_annotations
-        self.editor.change_category(selected_annotations)
-        self.editor.reset(selected_annotations)
+        self.editor.change_annotation_category(selected_annotations)
+        self.reset()
         self.update_view()
+
+    def change_annotation_id(self):
+        global selected_annotations
+
+        dialog = QInputDialog(self)
+        dialog.setWindowTitle("Change Annotation ID")
+        dialog.setLabelText("Enter new ID:")
+        dialog.setTextValue(str(self.editor.dataset_explorer.global_annotation_id))
+        dialog.setInputMode(QInputDialog.TextInput)
+        dialog.setTextEchoMode(QLineEdit.Normal)
+        dialog.setOkButtonText("Change")
+        dialog.setCancelButtonText("Cancel")
+        dialog.exec_()
+
+        try:
+            # self.editor.change_annotation_id(selected_annotations)
+            error_box = QMessageBox()
+            error_box.setIcon(QMessageBox.Warning)
+            error_box.setText(str(e))
+            error_box.setWindowTitle("Not implemented")
+            error_box.setStandardButtons(QMessageBox.Ok)
+            error_box.setDefaultButton(QMessageBox.Ok)
+            error_box.exec_()
+        except ValueError as e:
+            error_box = QMessageBox()
+            error_box.setIcon(QMessageBox.Warning)
+            error_box.setText(str(e))
+            error_box.setWindowTitle("Error")
+            error_box.setStandardButtons(QMessageBox.Ok)
+            error_box.setDefaultButton(QMessageBox.Ok)
+            error_box.exec_()
+        finally:
+            self.reset()
+            self.update_view()
 
     def get_top_bar(self):
         top_bar = QWidget()
@@ -242,24 +354,22 @@ class ApplicationInterface(QWidget):
         # suppress warning "QLayout::addChildLayout: layout "" already has a parent"
         # self.layout.addLayout(button_layout)
         buttons = [
-            ("Add", lambda: self.add()),
-            ("Reset", lambda: self.reset()),
-            ("Prev", lambda: self.prev_image()),
-            ("Next", lambda: self.next_image()),
-            ("Go To", lambda: self.go_to_image()),
-            ("Toggle", lambda: self.toggle()),
-            ("Transparency Up", lambda: self.transparency_up()),
-            ("Transparency Down", lambda: self.transparency_down()),
-            ("Save", lambda: self.save_all()),
+            ("Add", lambda: self.add(), "Add the currently selected annotation (N)"),
+            ("Reset", lambda: self.reset(), "Reset the current annotation and view (R)"),
+            ("Prev", lambda: self.prev_image(), "Go to the previous image (A)"),
+            ("Next", lambda: self.next_image(), "Go to the next image (D)"),
+            ("Remove Selected Annotations", lambda: self.delete_annotations(), "Delete selected annotations"),
             (
-                "Remove Selected Annotations",
-                lambda: self.delete_annotations(),
+                "Change Category",
+                lambda: self.change_annotation_category(),
+                "Change the category of the selected annotations",
             ),
-            ("Change Category", lambda: self.change_category()),
+            ("Change ID", lambda: self.change_annotation_id(), "Change the Tracking ID of the selected annotation"),
         ]
-        for button, lmb in buttons:
+        for button, lmb, tooltip in buttons:
             bt = QPushButton(button)
             bt.clicked.connect(lmb)
+            bt.setToolTip(tooltip)
             button_layout.addWidget(bt)
 
         return top_bar
