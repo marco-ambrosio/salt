@@ -19,9 +19,7 @@ class DisplayUtils:
         gray_mask = cv2.merge([gray_mask, gray_mask, gray_mask])
         color_mask = cv2.bitwise_and(gray_mask, color)
         masked_image = cv2.bitwise_and(image.copy(), color_mask)
-        overlay_on_masked_image = cv2.addWeighted(
-            masked_image, self.transparency, color_mask, 1 - self.transparency, 0
-        )
+        overlay_on_masked_image = cv2.addWeighted(masked_image, self.transparency, color_mask, 1 - self.transparency, 0)
         background = cv2.bitwise_and(image.copy(), cv2.bitwise_not(color_mask))
         image = cv2.add(background, overlay_on_masked_image)
         return image
@@ -44,30 +42,50 @@ class DisplayUtils:
             image = cv2.rectangle(image, (x, y), (x + w, y + h), color, -1)
         else:
             image = cv2.rectangle(image, (x, y), (x + w, y + h), color, self.box_width)
+
+        tracker_id = ann.get("tracker_id", -1)
+
         image = cv2.putText(
             image,
             "id: " + str(ann["id"]),
             (x, y - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.9,
-            (0, 0, 0),
+            (255, 0, 255),
             4,
         )
+
+        if tracker_id >= 0:
+            text = str(tracker_id)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 0.9
+            thickness = 4
+            text_size, baseline = cv2.getTextSize(text, font, font_scale, thickness)
+            text_width, text_height = text_size
+            center_x = x + w // 2 - text_width // 2
+            center_y = y + h // 2 + text_height // 2
+            image = cv2.putText(
+            image,
+            text,
+            (center_x, center_y),
+            font,
+            font_scale,
+            (255, 0, 255),
+            thickness,
+            )
         return image
 
     def draw_annotations(self, image, annotations, colors):
         for ann, color in zip(annotations, colors):
-            image = self.draw_box_on_image(image, ann, color)
             if type(ann["segmentation"]) is dict:
                 mask = coco_mask.decode(ann["segmentation"])
             else:
                 mask = self.__convert_ann_to_mask(ann, image.shape[0], image.shape[1])
             image = self.overlay_mask_on_image(image, mask, color)
+            image = self.draw_box_on_image(image, ann, color)
         return image
 
-    def draw_points(
-        self, image, points, labels, colors={1: (0, 255, 0), 0: (0, 0, 255)}, radius=5
-    ):
+    def draw_points(self, image, points, labels, colors={1: (0, 255, 0), 0: (0, 0, 255)}, radius=5):
         for i in range(points.shape[0]):
             point = points[i, :]
             label = labels[i]

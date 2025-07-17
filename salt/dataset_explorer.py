@@ -189,6 +189,11 @@ class DatasetExplorer:
         self.__category_colors = distinctipy.get_colors(len(self.categories))
         self.__category_colors = [tuple([int(255 * c) for c in color]) for color in self.__category_colors]
 
+        colors = distinctipy.get_colors(len(self._trackIdtoAnn))
+        self.__tracker_colors = {}
+        for id, color in zip(self._trackIdtoAnn.keys(), colors):
+            self.__tracker_colors[id] = tuple([int(255 * c) for c in color])
+
     def __createIndex(self):
         """
         Extension of the COCO createIndex method to also create mappings for tracker IDs.
@@ -212,6 +217,14 @@ class DatasetExplorer:
 
             self._trackIdToImg[tracker_id].append(ann["image_id"])
             self._trackIdtoAnn[tracker_id].append(ann["id"])
+
+    @property
+    def next_tracker_id(self):
+        """
+        Get the next available tracker ID.
+        This is simply the maximum tracker ID currently in use plus one.
+        """
+        return max(self._trackIdtoAnn.keys(), default=-1) + 1
 
     def getAnnIds(self, imgIds=[], catIds=[], areaRng=[], iscrowd=None, trackId=-1):
         """
@@ -257,10 +270,15 @@ class DatasetExplorer:
 
         return [img for img in self._trackIdToImg[trackId] if img in imgIds]
 
-    def get_colors(self, category_id):
-        if len(self.__category_colors) != len(self.categories):
+    def get_colors(self, id, is_category=True):
+        if is_category:
+            if len(self.__category_colors) != len(self.categories):
+                self.__init_colors()
+            return self.__category_colors[id]
+        
+        if len(self.__tracker_colors) != len(self._trackIdtoAnn):
             self.__init_colors()
-        return self.__category_colors[category_id]
+        return self.__tracker_colors.get(id, (1,1,1))
 
     def get_categories(self, get_colors=False):
         if get_colors:
@@ -292,7 +310,7 @@ class DatasetExplorer:
         image_embedding = np.load(embedding_path)
         return image, image_bgr, image_embedding
 
-    def get_annotations(self, image_id, return_colors=False):
+    def get_annotations(self, image_id, return_colors=False, color_by_tracker=False):
         """
         Get annotations for a specific image ID.
 
@@ -305,9 +323,13 @@ class DatasetExplorer:
         anns = self.coco.loadAnns(self.getAnnIds(imgIds=image_id))
 
 
-        if return_colors:
+        if return_colors and not color_by_tracker:
             cats = [a["category_id"] for a in anns]
             colors = [self.get_colors(c) for c in cats]
+            return anns, colors
+        elif return_colors and color_by_tracker:
+            tracker_ids = [a.get("tracker_id", -1) for a in anns]
+            colors = [self.get_colors(t, is_category=False) for t in tracker_ids]
             return anns, colors
         return anns
 
@@ -391,4 +413,23 @@ class DatasetExplorer:
                 if ann["image_id"] > sel["image_id"]:
                     ann["tracker_id"] = new_id
 
+        self.__createIndex()
+
+    def sort_images(self):
+        """
+        Sort the images in the dataset folder by their filenames.
+        Modifies the COCO JSON to reflect the new order.
+        """
+        old_images = [(img["file_name"], img["id"]) for img in self.coco.imgs.values()]
+        old_images = sorted(old_images, key=lambda x: x[0])
+
+        map_old_to_new = {}
+        for i, (_, image_id) in enumerate(old_images):
+            img = self.coco.loadImgs(image_id)[0]
+            img["id"] = i
+            map_old_to_new[image_id] = i
+
+        for ann in self.coco_json["annotations"]:
+            ann["image_id"] = map_old_to_new.get(ann["image_id"], ann["image_id"])
+        
         self.__createIndex()
