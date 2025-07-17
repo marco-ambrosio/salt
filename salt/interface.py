@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (
     QGraphicsView,
     QHBoxLayout,
     QInputDialog,
+    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -16,6 +17,9 @@ from PyQt5.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QStatusBar,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QHeaderView,
     QVBoxLayout,
     QWidget,
 )
@@ -106,15 +110,19 @@ class CustomGraphicsView(QGraphicsView):
         self.set_image(q_img)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if self.tracking_mode:
-            return
 
         # FUTURE USE OF RIGHT CLICK EVENT IN THIS AREA
         modifiers = QApplication.keyboardModifiers()
         if modifiers == Qt.ControlModifier:
             print("Control/ Command key pressed during a mouse click")
-            # self.editor.remove_click([int(x), int(y)])
+            pos = event.pos()
+            pos_in_item = self.mapToScene(pos) - self.image_item.pos()
+            x, y = int(pos_in_item.x()), int(pos_in_item.y())
+            if event.button() == Qt.LeftButton:
+                print(f"CTRL + Left click at ({x}, {y})")
         else:
+            if self.tracking_mode:
+                return
             pos = event.pos()
             pos_in_item = self.mapToScene(pos) - self.image_item.pos()
             x, y = pos_in_item.x(), pos_in_item.y()
@@ -122,8 +130,8 @@ class CustomGraphicsView(QGraphicsView):
                 label = 1
             elif event.button() == Qt.RightButton:
                 label = 0
-            self.editor.add_click([int(x), int(y)], label, selected_annotations)
-        self.imshow(self.editor.display)
+            self.editor.add_click([int(x), int(y)], label)
+            self.imshow(self.editor.display)
 
 
 class ApplicationInterface(QMainWindow):
@@ -146,6 +154,16 @@ class ApplicationInterface(QMainWindow):
         exit_action.triggered.connect(self.quit)
         file_menu.addAction(exit_action)
 
+        edit_menu = self.menuBar().addMenu("&Edit")
+        sort_action = QAction("&Sort Images", self)
+        sort_action.setStatusTip("Sort images in the dataset explorer by filenames")
+        sort_action.triggered.connect(self.sort_images)
+        edit_menu.addAction(sort_action)
+        # add_new_category_action = QAction("Add New Category", self)
+        # add_new_category_action.setStatusTip("Add a new category to the dataset")
+        # add_new_category_action.triggered.connect(self.editor.add_new_category)
+        # edit_menu.addAction(add_new_category_action)
+
         view_menu = self.menuBar().addMenu("&View")
         toggle_action = QAction("&Toggle Annotations", self)
         toggle_action.setStatusTip("Toggle annotation visibility (T)")
@@ -159,6 +177,14 @@ class ApplicationInterface(QMainWindow):
         transparency_down_action.setStatusTip("Decrease transparency (K)")
         transparency_down_action.triggered.connect(self.transparency_down)
         view_menu.addAction(transparency_down_action)
+        # add a toggle for the color by tracker mode
+        if self.tracking_mode:
+            color_by_tracker_action = QAction("Color by Tracker ID", self)
+            color_by_tracker_action.setStatusTip("Toggle color by tracker ID")
+            color_by_tracker_action.setCheckable(True)
+            color_by_tracker_action.setChecked(False)
+            color_by_tracker_action.triggered.connect(lambda: self.toggle_color_by_tracker())
+            view_menu.addAction(color_by_tracker_action)
 
         self.layout = QVBoxLayout()
 
@@ -167,23 +193,53 @@ class ApplicationInterface(QMainWindow):
 
         self.main_window = QHBoxLayout()
         if not tracking_mode:
+            layout = QVBoxLayout()
+            self.main_window.addLayout(layout)
+            label = QLabel("Current Image")
+            label.setStyleSheet("font-weight: bold; font-size: 16px;")
+            label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(label)
             self.graphics_view = CustomGraphicsView(editor)
-            self.main_window.addWidget(self.graphics_view)
+            layout.addWidget(self.graphics_view)
         else:
             self.images_column = QVBoxLayout()
+            label = QLabel("Current Image")
+            label.setStyleSheet("font-weight: bold; font-size: 16px;")
+            label.setAlignment(Qt.AlignCenter)
+            self.images_column.addWidget(label)
             self.graphics_view = CustomGraphicsView(editor)
             self.images_column.addWidget(self.graphics_view)
+            label = QLabel("Previous Image (only preview)")
+            label.setStyleSheet("font-weight: bold; font-size: 16px;")
+            label.setAlignment(Qt.AlignCenter)
+            self.images_column.addWidget(label)
             self.next_graphics_view = CustomGraphicsView(editor, tracking_mode=True)
             self.images_column.addWidget(self.next_graphics_view)
             self.main_window.addLayout(self.images_column)
 
+        # Side panel for categories
         self.panel = self.get_side_panel()
-        self.panel_annotations = QListWidget()
-        self.panel_annotations.setFixedWidth(200)
-        self.panel_annotations.setSelectionMode(QAbstractItemView.MultiSelection)
-        self.panel_annotations.itemClicked.connect(self.annotation_list_item_clicked)
-        self.get_side_panel_annotations()
         self.main_window.addWidget(self.panel)
+
+        self.panel_annotations = QTreeWidget()
+        if tracking_mode:
+            self.panel_annotations.setColumnCount(3)
+            self.panel_annotations.setHeaderLabels(["ID", "Tracker ID", "Category"])
+            self.panel_annotations.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            self.panel_annotations.header().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+            self.panel_annotations.header().setSectionResizeMode(2, QHeaderView.Stretch)
+        else:
+            self.panel_annotations.setColumnCount(2)
+            self.panel_annotations.setHeaderLabels(["ID", "Category"])
+            self.panel_annotations.header().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+            self.panel_annotations.header().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.panel_annotations.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.panel_annotations.setAlternatingRowColors(True)
+        self.panel_annotations.setRootIsDecorated(False)
+        self.panel_annotations.setIndentation(0)
+        self.panel_annotations.setSortingEnabled(True)
+        self.panel_annotations.sortByColumn(0, Qt.AscendingOrder)
+        self.panel_annotations.itemSelectionChanged.connect(self.annotation_list_item_clicked)
         self.main_window.addWidget(self.panel_annotations)
 
         self.layout.addLayout(self.main_window)
@@ -199,20 +255,27 @@ class ApplicationInterface(QMainWindow):
         self.get_side_panel_annotations()
 
         if self.tracking_mode:
-            self.next_graphics_view.imshow(self.editor.draw_next_image_with_annotations())
-
+            self.next_graphics_view.imshow(self.editor.draw_prev_image_with_annotations())
 
     def closeEvent(self, event):
         self.quit(event)
 
-    def quit(self, event=None):
+    def toggle_color_by_tracker(self):
+        self.editor.toggle_color_by_tracker()
+        self.update_view()
+
+    def confirmation_dialog(self, title, message):
         reply = QMessageBox.question(
             self,
-            "Quit",
-            "Do you want to save your changes before quitting?",
+            title,
+            message,
             QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
             QMessageBox.Cancel,
         )
+        return reply
+
+    def quit(self, event=None):
+        reply = self.confirmation_dialog("Quit", "Do you want to save your changes before quitting?")
 
         if reply == QMessageBox.Yes:
             self.save_all()
@@ -227,43 +290,44 @@ class ApplicationInterface(QMainWindow):
             event.accept()
         self.app.quit()
 
+    def sort_images(self):
+        reply = self.confirmation_dialog(
+            "Sort Images",
+            "Do you want to sort the images in the dataset explorer by their filenames?",
+        )
+        if reply == QMessageBox.Yes:
+            self.editor.sort_images()
+            self.statusBar().showMessage("Images sorted successfully!", 5000)
+            self.reset()
+
     def reset(self):
-        global selected_annotations
-        self.editor.reset(selected_annotations)
-        selected_annotations = []
+        self.editor.reset()
+        self.panel_annotations.clearSelection()
         self.update_view()
 
     def add(self):
-        global selected_annotations
         self.editor.save_ann()
-        self.editor.reset(selected_annotations)
-        self.update_view()
+        self.reset()
         self.statusBar().showMessage("Annotation added successfully!", 5000)
 
     def next_image(self):
-        global selected_annotations
         self.editor.next_image()
-        selected_annotations = []
-        self.update_view()
+        self.reset()
 
     def prev_image(self):
-        global selected_annotations
         self.editor.prev_image()
-        selected_annotations = []
-        self.update_view()
+        self.reset()
 
     def toggle(self):
-        global selected_annotations
-        self.editor.toggle(selected_annotations)
+        self.editor.toggle(self.get_selected_annotations())
         self.update_view()
 
     def transparency_up(self):
-        global selected_annotations
-        self.editor.step_up_transparency(selected_annotations)
+        self.editor.step_up_transparency(self.get_selected_annotations())
         self.update_view()
 
     def transparency_down(self):
-        self.editor.step_down_transparency(selected_annotations)
+        self.editor.step_down_transparency(self.get_selected_annotations())
         self.update_view()
 
     def save_all(self):
@@ -271,33 +335,40 @@ class ApplicationInterface(QMainWindow):
         self.statusBar().showMessage("Annotations saved successfully!", 5000)
 
     def change_annotation_category(self):
-        global selected_annotations
-        self.editor.change_annotation_category(selected_annotations)
+        self.editor.change_annotation_category(self.get_selected_annotations())
         self.reset()
         self.update_view()
 
-    def change_annotation_id(self):
-        global selected_annotations
+    def change_annotation_tracker_id(self):
+        selected_annotations, tracker_ids = self.get_selected_annotations(get_tracker_id=True)
+
+        if len(selected_annotations) != 1:
+            error_box = QMessageBox()
+            error_box.setIcon(QMessageBox.Warning)
+            error_box.setText("Please select exactly one annotation to change its ID.")
+            error_box.setWindowTitle("Error")
+            error_box.setStandardButtons(QMessageBox.Ok)
+            error_box.setDefaultButton(QMessageBox.Ok)
+            error_box.exec_()
+            return
 
         dialog = QInputDialog(self)
         dialog.setWindowTitle("Change Annotation ID")
         dialog.setLabelText("Enter new ID:")
-        dialog.setTextValue(str(self.editor.dataset_explorer.global_annotation_id))
-        dialog.setInputMode(QInputDialog.TextInput)
+        dialog.setIntValue(tracker_ids[0] if tracker_ids[0] >= 0 else self.editor.next_tracker_id)
+        dialog.setInputMode(QInputDialog.IntInput)
         dialog.setTextEchoMode(QLineEdit.Normal)
         dialog.setOkButtonText("Change")
         dialog.setCancelButtonText("Cancel")
         dialog.exec_()
 
         try:
-            # self.editor.change_annotation_id(selected_annotations)
-            error_box = QMessageBox()
-            error_box.setIcon(QMessageBox.Warning)
-            error_box.setText(str(e))
-            error_box.setWindowTitle("Not implemented")
-            error_box.setStandardButtons(QMessageBox.Ok)
-            error_box.setDefaultButton(QMessageBox.Ok)
-            error_box.exec_()
+            if dialog.result() == QInputDialog.Accepted:
+                new_id = dialog.intValue()
+                self.editor.change_annotation_tracker_id(selected_annotations, new_id)
+                self.statusBar().showMessage(f"Annotation ID changed to {new_id} successfully!", 5000)
+            else:
+                self.statusBar().showMessage("Annotation ID change cancelled.", 5000)
         except ValueError as e:
             error_box = QMessageBox()
             error_box.setIcon(QMessageBox.Warning)
@@ -326,7 +397,11 @@ class ApplicationInterface(QMainWindow):
                 lambda: self.change_annotation_category(),
                 "Change the category of the selected annotations",
             ),
-            ("Change ID", lambda: self.change_annotation_id(), "Change the Tracking ID of the selected annotation"),
+            (
+                "Change ID",
+                lambda: self.change_annotation_tracker_id(),
+                "Change the Tracking ID of the selected annotation",
+            ),
         ]
         for button, lmb, tooltip in buttons:
             bt = QPushButton(button)
@@ -357,30 +432,50 @@ class ApplicationInterface(QMainWindow):
         anns, colors = self.editor.list_annotations()
         list_widget = self.panel_annotations
         list_widget.clear()
-        # anns, colors = self.editor.get_annotations(self.editor.image_id)
         categories = self.editor.get_categories(get_colors=False)
-        for i, ann in enumerate(anns):
-            listWidgetItem = QListWidgetItem(str(ann["id"]) + " - " + (categories[ann["category_id"]]))
-            list_widget.addItem(listWidgetItem)
+
+        if self.tracking_mode:
+            for ann in anns:
+                item = QTreeWidgetItem(list_widget)
+                item.setText(0, str(ann["id"]))
+                tr_id = ann.get("tracker_id", -1)
+                tr_id_text = str(tr_id) if tr_id >= 0 else "N/A"
+                item.setText(1, tr_id_text)
+                item.setText(2, categories[ann["category_id"]])
+                item.setData(0, Qt.UserRole, ann["id"])
+                item.setData(1, Qt.UserRole, tr_id)
+        else:
+            for ann in anns:
+                item = QTreeWidgetItem(list_widget)
+                item.setText(0, str(ann["id"]))
+                item.setText(1, categories[ann["category_id"]])
+                item.setData(0, Qt.UserRole, ann["id"])
+
         return list_widget
 
     def delete_annotations(self):
-        global selected_annotations
-        for annotation in selected_annotations:
+        for annotation in self.get_selected_annotations():
             self.editor.delete_annotations(annotation)
         self.get_side_panel_annotations()
-        selected_annotations = []
         self.reset()
 
-    def annotation_list_item_clicked(self, item):
-        global selected_annotations
-        if item.isSelected():
-            selected_annotations.append(int(item.text().split(" ")[0]))
-            self.editor.draw_selected_annotations(selected_annotations)
-        else:
-            selected_annotations.remove(int(item.text().split(" ")[0]))
-            self.editor.draw_selected_annotations(selected_annotations)
+    def annotation_list_item_clicked(self):
+        selected_annotations = self.get_selected_annotations()
+        self.editor.draw_selected_annotations(selected_annotations)
         self.graphics_view.imshow(self.editor.display)
+
+    def get_selected_annotations(self, get_tracker_id=False):
+        selected_annotations = []
+        if not get_tracker_id:
+            for item in self.panel_annotations.selectedItems():
+                selected_annotations.append(item.data(0, Qt.UserRole))
+            return selected_annotations
+        else:
+            tracker_ids = []
+            for item in self.panel_annotations.selectedItems():
+                selected_annotations.append(item.data(0, Qt.UserRole))
+                tracker_ids.append(item.data(1, Qt.UserRole))
+            return selected_annotations, tracker_ids
 
     def keyPressEvent(self, event):
         # if event.key() == Qt.Key_Escape:
@@ -400,7 +495,7 @@ class ApplicationInterface(QMainWindow):
         if event.key() == Qt.Key_T:
             self.toggle()
         if event.key() == Qt.Key_C:
-            self.change_category()
+            self.change_annotation_category()
         if event.modifiers() == Qt.ControlModifier and event.key() == Qt.Key_S:
             self.save_all()
         elif event.key() == Qt.Key_Space:

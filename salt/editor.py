@@ -45,6 +45,7 @@ class Editor:
         )
         self.curr_inputs = CurrentCapturedInputs()
         self.categories, self.category_colors = self.dataset_explorer.get_categories(get_colors=True)
+        self.color_by_tracker = False
         self.image_id = min(self.dataset_explorer.getImgIds(), default=0)
         self.category_id = 0
         self.show_other_anns = True
@@ -54,6 +55,7 @@ class Editor:
             self.image_embedding,
         ) = self.dataset_explorer.get_image_data(self.image_id)
         self.display = self.image_bgr.copy()
+        self._set_prev_image_with_annotations()
         self.onnx_helper = OnnxModels(
             onnx_models_path,
             image_width=self.image.shape[1],
@@ -62,15 +64,25 @@ class Editor:
         self.du = DisplayUtils()
         self.reset()
 
+    @property
+    def next_tracker_id(self):
+        return self.dataset_explorer.next_tracker_id
+
     def list_annotations(self):
         anns, colors = self.dataset_explorer.get_annotations(self.image_id, return_colors=True)
         return anns, colors
+
+    def toggle_color_by_tracker(self):
+        self.color_by_tracker = not self.color_by_tracker
 
     def delete_annotations(self, annotation_id):
         self.dataset_explorer.delete_annotations(annotation_id)
 
     def __draw_known_annotations(self, selected_annotations=[]):
-        anns, colors = self.dataset_explorer.get_annotations(self.image_id, return_colors=True)
+        anns, colors = self.dataset_explorer.get_annotations(
+            self.image_id, return_colors=True, color_by_tracker=self.color_by_tracker
+        )
+
         for i, (ann, color) in enumerate(zip(anns, colors)):
             for selected_ann in selected_annotations:
                 if ann["id"] == selected_ann:
@@ -89,21 +101,33 @@ class Editor:
     def draw_selected_annotations(self, selected_annotations=[]):
         self.__draw(selected_annotations)
 
-    def draw_next_image_with_annotations(self):
+    def _set_prev_image_with_annotations(self):
+        if not hasattr(self, "prev_display"):
+            self._prev_image_bgr = np.zeros_like(self.image_bgr)
+        if not hasattr(self, "prev_anns"):
+            self.prev_anns = []
+        if not hasattr(self, "prev_colors"):
+            self.prev_colors = []
+
+        if self.image_id == min(self.dataset_explorer.getImgIds(), default=0):
+            self._prev_image_bgr = np.zeros_like(self.image_bgr)
+            return
+
+        image_id = self.image_id - 1
+        _, self._prev_image_bgr, _ = self.dataset_explorer.get_image_data(image_id)
+
+        self.prev_anns, self.prev_colors = self.dataset_explorer.get_annotations(
+            image_id, return_colors=True, color_by_tracker=self.color_by_tracker
+        )
+
+    def draw_prev_image_with_annotations(self):
         """
-        Returns the next image with annotations drawn on it.
+        Returns the prev image with annotations drawn on it.
         If the current image is the last one, it returns a blank image.
         """
-
-        if self.image_id == self.dataset_explorer.get_num_images() - 1:
-            display = np.zeros_like(self.image_bgr)
-            return display
-
-        image_id = self.image_id + 1
-        (image, image_bgr, image_embedding) = self.dataset_explorer.get_image_data(image_id)
-        display = image_bgr.copy()
-        anns, colors = self.dataset_explorer.get_annotations(image_id, return_colors=True)
-        display = self.du.draw_annotations(display, anns, colors)
+        display = self._prev_image_bgr.copy()
+        if self.show_other_anns:
+            display = self.du.draw_annotations(display, self.prev_anns, self.prev_colors)
         return display
 
     def add_click(self, new_pt, new_label, selected_annotations=[]):
@@ -122,7 +146,7 @@ class Editor:
     def remove_click(self, new_pt):
         print("ran remove click")
 
-    def reset(self, hard=True, selected_annotations=[]):
+    def reset(self, selected_annotations=[]):
         self.curr_inputs.reset_inputs()
         self.__draw(selected_annotations)
 
@@ -165,6 +189,7 @@ class Editor:
         ) = self.dataset_explorer.get_image_data(self.image_id)
         self.display = self.image_bgr.copy()
         self.onnx_helper.set_image_resolution(self.image.shape[1], self.image.shape[0])
+        self._set_prev_image_with_annotations()
         self.reset()
 
     def prev_image(self):
@@ -178,6 +203,7 @@ class Editor:
         ) = self.dataset_explorer.get_image_data(self.image_id)
         self.display = self.image_bgr.copy()
         self.onnx_helper.set_image_resolution(self.image.shape[1], self.image.shape[0])
+        self._set_prev_image_with_annotations()
         self.reset()
 
     def next_category(self):
@@ -200,3 +226,14 @@ class Editor:
     def select_category(self, category_name):
         category_id = self.categories.index(category_name)
         self.category_id = category_id
+
+    def sort_images(self):
+        self.dataset_explorer.sort_images()
+        self.image_id = min(self.dataset_explorer.getImgIds(), default=0)
+        (
+            self.image,
+            self.image_bgr,
+            self.image_embedding,
+        ) = self.dataset_explorer.get_image_data(self.image_id)
+        self.display = self.image_bgr.copy()
+        self.reset()
