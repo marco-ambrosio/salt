@@ -145,6 +145,10 @@ class ApplicationInterface(QMainWindow):
         self.setStatusBar(QStatusBar(self))
 
         file_menu = self.menuBar().addMenu("&File")
+        go_to_image_action = QAction("&Go To Image", self)
+        go_to_image_action.setStatusTip("Go to a specific image by ID")
+        go_to_image_action.triggered.connect(self.go_to_image)
+        file_menu.addAction(go_to_image_action)
         save_action = QAction("&Save", self)
         save_action.setStatusTip("Save the current annotation (Ctrl+S)")
         save_action.triggered.connect(self.save_all)
@@ -316,6 +320,16 @@ class ApplicationInterface(QMainWindow):
 
     def prev_image(self):
         self.editor.prev_image()
+        self.reset()
+    
+    def go_to_image(self):
+        items = self.editor.dataset_explorer.getImgIds()
+        items = [str(i) for i in sorted(items)]
+        item, ok = QInputDialog.getItem(self, "Go To Image", "Select Image ID:", items, 0, False)
+        if not ok or not item:
+            return
+        image_id = int(item)
+        self.editor.go_to_image(image_id)
         self.reset()
 
     def toggle(self):
