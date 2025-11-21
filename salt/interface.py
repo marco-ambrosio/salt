@@ -96,8 +96,8 @@ class CustomGraphicsView(QGraphicsView):
                 self.scale(1 + adj, 1 + adj)
             elif event.key() == Qt.Key_Minus:
                 self.scale(1 - adj, 1 - adj)
-        else:
-            super().keyPressEvent(event)
+                
+        super().keyPressEvent(event)
 
     def imshow(self, img):
         height, width, channel = img.shape
