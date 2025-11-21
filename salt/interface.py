@@ -23,8 +23,9 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PyQt5.QtGui import QImage, QPixmap, QPainter, QWheelEvent, QMouseEvent
+from PyQt5.QtGui import QImage, QPixmap, QPainter, QWheelEvent, QMouseEvent, QCloseEvent
 from PyQt5.QtCore import Qt, QRectF
+
 
 selected_annotations = []
 
@@ -278,14 +279,14 @@ class ApplicationInterface(QMainWindow):
 
         if reply == QMessageBox.Yes:
             self.save_all()
-            if event is not None:
+            if isinstance(event, QCloseEvent):
                 event.accept()
         elif reply == QMessageBox.Cancel:
-            if event is not None:
+            if isinstance(event, QCloseEvent):
                 event.ignore()
             return
 
-        if event is not None:
+        if isinstance(event, QCloseEvent):
             event.accept()
         self.app.quit()
 
