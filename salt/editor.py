@@ -154,6 +154,19 @@ class Editor:
         self.dataset_explorer.update_annotation_tracker_id(selected_annotations, new_id)
         self.__draw(selected_annotations)
 
+    def go_to_image(self, image_id):
+        if image_id < 0 or image_id >= self.dataset_explorer.get_num_images():
+            return
+        self.image_id = image_id
+        (
+            self.image,
+            self.image_bgr,
+            self.image_embedding,
+        ) = self.dataset_explorer.get_image_data(self.image_id)
+        self.display = self.image_bgr.copy()
+        self.onnx_helper.set_image_resolution(self.image.shape[1], self.image.shape[0])
+        self.reset()
+
     def next_image(self):
         if self.image_id == self.dataset_explorer.get_num_images() - 1:
             return

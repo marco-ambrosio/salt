@@ -20,6 +20,7 @@ from PyQt5.QtWidgets import (
     QWidget,
     QLabel,
     QRadioButton,
+    QInputDialog
 )
 
 selected_annotations = []
@@ -95,6 +96,8 @@ class CustomGraphicsView(QGraphicsView):
                 self.scale(1 + adj, 1 + adj)
             elif event.key() == Qt.Key_Minus:
                 self.scale(1 - adj, 1 - adj)
+        else:
+            super().keyPressEvent(event)
 
     def imshow(self, img):
         height, width, channel = img.shape
@@ -192,6 +195,23 @@ class ApplicationInterface(QWidget):
         self.editor.prev_image()
         selected_annotations = []
         self.update_view()
+    
+    def go_to_image(self):
+        global selected_annotations
+        
+        # propose a list of image ids to go to
+        # use image ids not a sequential index
+        items = self.editor.dataset_explorer.getImgIds()
+        items = [str(i) for i in sorted(items)]
+        item, ok = QInputDialog.getItem(self, "Go To Image", "Select Image ID:", items, 0, False)
+        if not ok or not item:
+            return
+        image_id = int(item)
+
+        if ok:
+            self.editor.go_to_image(image_id)
+            selected_annotations = []
+            self.update_view()
 
     def toggle(self):
         global selected_annotations
@@ -226,6 +246,7 @@ class ApplicationInterface(QWidget):
             ("Reset", lambda: self.reset()),
             ("Prev", lambda: self.prev_image()),
             ("Next", lambda: self.next_image()),
+            ("Go To", lambda: self.go_to_image()),
             ("Toggle", lambda: self.toggle()),
             ("Transparency Up", lambda: self.transparency_up()),
             ("Transparency Down", lambda: self.transparency_down()),
