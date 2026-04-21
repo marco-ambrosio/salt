@@ -53,27 +53,46 @@ class CustomGraphicsView(QGraphicsView):
 
         self.image_item = None
 
-    def set_image(self, q_img):
+    def set_image(self, q_img, fit_to_view=False):
         pixmap = QPixmap.fromImage(q_img)
+        first_image = self.image_item is None
+
+        # Preserve current scroll position when refreshing the same image view
+        # (e.g. ROI updates) so zoom/pan remain pixel-stable.
+        prev_scroll = None
+        if not first_image:
+            prev_scroll = (
+                self.horizontalScrollBar().value(),
+                self.verticalScrollBar().value(),
+            )
+
         if self.image_item:
             self.image_item.setPixmap(pixmap)
             self.setSceneRect(QRectF(pixmap.rect()))
         else:
             self.image_item = self.scene.addPixmap(pixmap)
             self.setSceneRect(QRectF(pixmap.rect()))
-        # Image scaling: always fill the view, up or down, keeping aspect ratio
-        view_size = self.viewport().size()
-        img_size = pixmap.size()
-        if img_size.width() > 0 and img_size.height() > 0:
-            scale_x = view_size.width() / img_size.width()
-            scale_y = view_size.height() / img_size.height()
-            scale = min(scale_x, scale_y)
-            self.resetTransform()
-            self.scale(scale, scale)
-        else:
-            self.resetTransform()
-        # Optionally, center the image
-        self.centerOn(self.sceneRect().center())
+
+        # Fit only on first load (or when explicitly requested), otherwise
+        # keep the user's current zoom level.
+        if fit_to_view or first_image:
+            view_size = self.viewport().size()
+            img_size = pixmap.size()
+            if img_size.width() > 0 and img_size.height() > 0:
+                scale_x = view_size.width() / img_size.width()
+                scale_y = view_size.height() / img_size.height()
+                scale = min(scale_x, scale_y)
+                self.resetTransform()
+                self.scale(scale, scale)
+            else:
+                self.resetTransform()
+            self.centerOn(self.sceneRect().center())
+        elif prev_scroll is not None:
+            h_val, v_val = prev_scroll
+            h_bar = self.horizontalScrollBar()
+            v_bar = self.verticalScrollBar()
+            h_bar.setValue(min(max(h_val, h_bar.minimum()), h_bar.maximum()))
+            v_bar.setValue(min(max(v_val, v_bar.minimum()), v_bar.maximum()))
 
     def wheelEvent(self, event: QWheelEvent):
         modifiers = QApplication.keyboardModifiers()
@@ -99,14 +118,18 @@ class CustomGraphicsView(QGraphicsView):
                 
         super().keyPressEvent(event)
 
-    def imshow(self, img):
+    def imshow(self, img, fit_to_view=False):
         height, width, channel = img.shape
         bytes_per_line = 3 * width
         q_img = QImage(img.data, width, height, bytes_per_line, QImage.Format_RGB888).rgbSwapped()
-        self.set_image(q_img)
+        self.set_image(q_img, fit_to_view=fit_to_view)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
         if self.tracking_mode:
+            return
+
+        if self.image_item is None:
+            super().mousePressEvent(event)
             return
 
         # FUTURE USE OF RIGHT CLICK EVENT IN THIS AREA
@@ -115,12 +138,16 @@ class CustomGraphicsView(QGraphicsView):
             print("Control/ Command key pressed during a mouse click")
             # self.editor.remove_click([int(x), int(y)])
         else:
+            if event.button() not in (Qt.LeftButton, Qt.RightButton):
+                super().mousePressEvent(event)
+                return
+
             pos = event.pos()
             pos_in_item = self.mapToScene(pos) - self.image_item.pos()
             x, y = pos_in_item.x(), pos_in_item.y()
             if event.button() == Qt.LeftButton:
                 label = 1
-            elif event.button() == Qt.RightButton:
+            else:
                 label = 0
             self.editor.add_click([int(x), int(y)], label, selected_annotations)
         self.imshow(self.editor.display)
