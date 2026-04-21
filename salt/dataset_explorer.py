@@ -179,7 +179,7 @@ class DatasetExplorer:
         image_names = [os.path.split(name)[1] for name in image_names if name.endswith(".jpg") or name.endswith(".png")]
         image_names.sort()
         image_names = [os.path.join("images", name) for name in image_names]
-        self.coco_json = init_coco(self.dataset_folder, image_names, categories, self.coco_json_path)
+        self.coco_json = init_coco(self.dataset_folder, image_names, categories)
         self.save_annotation()
 
     def __init_colors(self):
